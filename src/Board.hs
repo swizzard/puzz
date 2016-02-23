@@ -12,11 +12,14 @@ import qualified Data.Vector as V
 
 import Puzz.Token
 
+type B = V.Vector (V.Vector Token)
 
 data Board = Board { w :: Int
                    , h :: Int
-                   , b :: V.Vector (V.Vector Token)
+                   , b :: B
                    } deriving (Show)
+instance Functor a => Board Int Int a where
+    fmap (Board w h b) = Board w h (f b)
 
 -- COLUMNS NOT ROWS
 emptyBoard :: Int -> Int -> Board
@@ -26,24 +29,31 @@ randBoard :: (RandomGen g) => g -> Int -> Int -> Board
 randomBoard g x y = let l = (x * y) in splitV (fromList (randTokens g l)) empty where
     splitV [] a = a
     splitV l a = let (n, r) = splitAt l y in splitV r (cons 
-    
-BoardPos = newtype (Int, Int)
-
-inBounds :: Board -> BoardPos -> Bool
-inBounds (Board w h _) (BoardPos x y) = x < w && y < h
-
-getPos :: Board -> BoardPos -> Maybe Token
-getPos b x y = join $ fmap (V.!? y) $ b V.!? x
 
 replaceIn :: Vector a -> Int -> a -> Vector a
 replaceIn v i n = (V.take i) V.++
                   (V.singleton n) V.++
                   (V.drop (i + 1))
 
-setPos :: Board -> BoardPos -> Token -> Board
-setPos (Board _ _ b) d@(BoardPos x y) t =
-    if not (inBounds b d) then b else let r = b V.! x in
-        Board w h $ replaceIn b x (replaceIn r y t)
+data BoardPos = BoardPos Int Int
+
+replaceBoard :: Board -> B -> Board
+replaceBoard (Board w h _) b
+    | length b != (w * h) = error "board size mismatch"
+    | otherwise = Board w h b
+
+inBounds :: Board -> BoardPos -> Maybe BoardPos
+inBounds (Board w h _) p@(BoardPos x y)
+    | x < w && y < h = Just p
+    | otherwise = Nothing
+
+getPos :: Board -> Maybe BoardPos -> Maybe Token
+getPos b (Just (BoardPos x y)) = join $ fmap (V.! y) $ b V.! x
+getPos b Nothing = Nothing
+
+setPos :: Board -> Maybe BoardPos -> Token -> Board
+setPos board@(Board w h b) (Just d@(BoardPos x y)) t = let r = b V.! x in
+        replaceBoard board $ replaceIn b x (replaceIn r y t)
 
 -- move token at `s` to `d`, returning `b` unchanged if `s` or `d` are OOB
 mvTo :: Board -> BoardPos -> BoardPos -> Board
